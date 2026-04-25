@@ -82,14 +82,14 @@ Token *tokenize(const char *pch){
 				if(pch[1] == '&'){
 					addTk(AND);
 					pch+=2;
-				}
+				} else err("missing the second &");
 				break;
 			}
 			case '|':{
 				if(pch[1] == '|'){
 					addTk(OR);
 					pch+=2;
-				}
+				} else err("missing the second |");
 				break;
 			}
 			case '!':{
@@ -165,11 +165,15 @@ Token *tokenize(const char *pch){
 
 					int isDouble=0;
 					//12.378
-					if(*pch == '.' && isdigit(*(pch+1))){
-						isDouble=1;
-						pch++;
-						while(isdigit(*pch)) pch++;
+					if(*pch == '.')
+					{
+						if(isdigit(*(pch+1))){
+							isDouble=1;
+							pch++;
+							while(isdigit(*pch)) pch++;
+						}  else err("missing digit");
 					}
+
 					//12.37e+8 / 12.37e2 / 12.37e-2
 					if(*pch == 'e' || *pch == 'E'){
 						const char *p = pch+1;
@@ -178,7 +182,7 @@ Token *tokenize(const char *pch){
 							isDouble = 1;
 							pch = p;
 							while(isdigit(*pch)) pch++;
-						}
+						} else err("missing digit");
 					}
 					if(isDouble == 1){
 						tk = addTk(DOUBLE);
@@ -224,7 +228,6 @@ Token *tokenize(const char *pch){
 							pch++;
 							tk = addTk(CHAR);
 							tk->c = c;
-							tk->text = extract(start, pch);
 						} else err("missing ' in closing");
 					}
 				//STRING
@@ -285,22 +288,8 @@ void showTokens(const Token *tokens){
             case RETURN: printf("RETURN"); break;
             case VOID: printf("VOID"); break;
             case INT: printf("INT:%d", atoi(tk->text)); break;
-            case DOUBLE: printf("DOUBLE:%g", atof(tk->text)); break;
-			case CHAR:{
-				if(strcmp(tk->text, "'\\a'") == 0) printf("CHAR:\\a");
-				else if(strcmp(tk->text, "'\\b'") == 0) printf("CHAR:\\b");
-				else if(strcmp(tk->text, "'\\f'") == 0) printf("CHAR:\\f");
-				else if(strcmp(tk->text, "'\\n'") == 0) printf("CHAR:\\n");
-				else if(strcmp(tk->text, "'\\r'") == 0) printf("CHAR:\\r");
-				else if(strcmp(tk->text, "'\\t'") == 0) printf("CHAR:\\t");
-				else if(strcmp(tk->text, "'\\v'") == 0) printf("CHAR:\\v");
-				else if(strcmp(tk->text, "'\\\\'") == 0) printf("CHAR:\\\\");
-				else if(strcmp(tk->text, "'\\''") == 0) printf("CHAR:'");
-				else if(strcmp(tk->text, "'\\\"'") == 0) printf("CHAR:\"");
-				else if(strcmp(tk->text, "'\\0'") == 0) printf("CHAR:\\0");
-				else printf("CHAR:%c", tk->text[1]); // la un char 'a', imi trebuie al doilea caracter
-				break;
-			}
+            case DOUBLE: printf("DOUBLE:%.2f", atof(tk->text)); break;
+			case CHAR: printf("CHAR:%c", tk->c); break;
             case STRING: printf("STRING:%s", tk->text); break;
             case COMMA: printf("COMMA"); break;
             case SEMICOLON: printf("SEMICOLON"); break;
@@ -337,7 +326,7 @@ void freeTokens(Token *tokens){
 	Token *tk = tokens;
 	while(tk){
 		Token *next = tk->next;
-		if(tk->code==ID || tk->code==INT || tk->code==DOUBLE || tk->code==CHAR || tk->code==STRING){
+		if(tk->code==ID || tk->code==INT || tk->code==DOUBLE  || tk->code==STRING){
 			free(tk->text);
 		}
 		free(tk);
