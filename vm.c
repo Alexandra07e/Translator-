@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "utils.h"
 #include "ad.h"
@@ -17,6 +18,30 @@ Instr *addInstr(Instr **list,Opcode op){
 	return i;
 	}
 
+Instr *insertInstr(Instr *before,int op){
+	Instr *i=(Instr*)safeAlloc(sizeof(Instr));
+	i->op=op;
+	i->next=before->next;
+	before->next=i;
+	return i;
+	}
+
+void delInstrAfter(Instr *instr){
+	if(!instr)return;
+	for(Instr *next=instr->next,*i=next;i;i=next){
+		next=i->next;
+		free(i);
+		}
+	instr->next=NULL;
+}
+
+Instr *lastInstr(Instr *list){
+	if(list){
+		while(list->next)list=list->next;
+		}
+	return list;
+	}
+
 Instr *addInstrWithInt(Instr **list,Opcode op,int argVal){
 	Instr *i=addInstr(list,op);
 	i->arg.i=argVal;
@@ -29,12 +54,13 @@ Instr *addInstrWithDouble(Instr **list,Opcode op,double argVal){
 	return i;
 	}
 
-Val stack[10000];		// the stack
+#define MAXSTACK 10000
+Val stack[MAXSTACK];		// the stack
 Val *SP=stack-1;		// Stack pointer - the stack's top - points to the value from the top of the stack
 Val *FP=NULL;		// the initial value doesn't matter
 
 void pushv(Val v){
-	if(SP+1==stack+10000)err("trying to push into a full stack");
+	if(SP+1==stack+MAXSTACK)err("trying to push into a full stack");
 	*++SP=v;
 	}
 
@@ -44,7 +70,7 @@ Val popv(){
 	}
 
 void pushi(int i){
-	if(SP+1==stack+10000)err("trying to push into a full stack");
+	if(SP+1==stack+MAXSTACK)err("trying to push into a full stack");
 	(++SP)->i=i;
 	}
 
@@ -53,25 +79,18 @@ int popi(){
 	return SP--->i;
 	}
 
-//FUNCTII PT DOUBLE 
-void pushf(double f){
-	if(SP+1 == stack+10000) err("trying to push into a full stack");
-	(++SP)->f = f;
-}
-
 double popf(){
-	if(SP == stack-1) err("trying to pop from empty stack");
+	if(SP==stack-1)err("trying to pop from empty stack");
 	return SP--->f;
-}
+	}
 
-void put_d(){
-	printf("=> %g", popf());
-}
-
-//----------------------------------
+void pushf(double f){
+	if(SP+1==stack+MAXSTACK)err("trying to push into a full stack");
+	(++SP)->f=f;
+	}
 
 void pushp(void *p){
-	if(SP+1==stack+10000)err("trying to push into a full stack");
+	if(SP+1==stack+MAXSTACK)err("trying to push into a full stack");
 	(++SP)->p=p;
 	}
 
@@ -84,20 +103,23 @@ void put_i(){
 	printf("=> %d",popi());
 	}
 
-//added put_d
+void put_d(){
+	printf("=> %g",popf());
+	}
+
 void vmInit(){
 	Symbol *fn=addExtFn("put_i",put_i,(Type){TB_VOID,NULL,-1});
 	addFnParam(fn,"i",(Type){TB_INT,NULL,-1});
 
-	fn = addExtFn("put_d", put_d, (Type){TB_VOID, NULL, -1});
-	addFnParam(fn, "d", (Type){TB_DOUBLE, NULL, -1});
+	fn=addExtFn("put_d",put_d,(Type){TB_VOID,NULL,-1});
+	addFnParam(fn,"d",(Type){TB_DOUBLE,NULL,-1});
 	}
 
-//added variables
 void run(Instr *IP){
 	Val v;
 	int iArg,iTop,iBefore;
 	double fTop, fBefore;
+	void *pTop;
 	void(*extFnPtr)();
 	for(;;){
 		// shows the index of the current instruction and the number of values from stack
@@ -172,9 +194,105 @@ void run(Instr *IP){
 				IP=IP->next;
 				break;
 
+			// added for code generation
+			case OP_CONV_F_I:
+				fTop=popf();
+				pushi((int)fTop);
+				printf("CONV.f.i\t// %g -> %d",fTop,(int)fTop);
+				IP=IP->next;
+				break;
+			case OP_DROP:
+				popv();
+				printf("DROP");
+				IP=IP->next;
+				break;
 			case OP_PUSH_F:
 				printf("PUSH.f\t%g",IP->arg.f);
 				pushf(IP->arg.f);
+				IP=IP->next;
+				break;
+			case OP_FPADDR_I:
+				pTop=&FP[IP->arg.i].i;
+				pushp(pTop);
+				printf("FPADDR\t%d\t// %p",IP->arg.i,pTop);
+				IP=IP->next;
+				break;
+			case OP_LOAD_I:
+				pTop=popp();
+				pushi(*(int*)pTop);
+				printf("LOAD.i\t// *(int*)%p -> %d",pTop,*(int*)pTop);
+				IP=IP->next;
+				break;
+			case OP_NOP:
+				printf("NOP");
+				IP=IP->next;
+				break;
+			case OP_RET:
+				v=popv();
+				iArg=IP->arg.i;
+				printf("RET\t%d\t// i:%d, f:%g",iArg,v.i,v.f);
+				IP=FP[-1].p;
+				SP=FP-iArg-2;
+				FP=FP[0].p;
+				pushv(v);
+				break;
+			case OP_SUB_I:
+				iTop=popi();
+				iBefore=popi();
+				pushi(iBefore-iTop);
+				printf("SUB.i\t// %d-%d -> %d",iBefore,iTop,iBefore-iTop);
+				IP=IP->next;
+				break;
+			case OP_MUL_I:
+				iTop=popi();
+				iBefore=popi();
+				pushi(iBefore*iTop);
+				printf("MUL.i\t// %d*%d -> %d",iBefore,iTop,iBefore*iTop);
+				IP=IP->next;
+				break;
+			case OP_STORE_I:
+				iTop=popi();
+				v=popv();
+				*(int*)v.p=iTop;
+				pushi(iTop);
+				printf("STORE.i\t// *(int*)%p=%d",v.p,iTop);
+				IP=IP->next;
+				break;
+
+			//ADDED BY ME
+			case OP_CONV_I_F:
+				iTop=popi();
+				pushf((double)iTop);
+				printf("CONV.i.f\t// %d -> %g",iTop,(double)iTop);
+				IP=IP->next;
+				break;
+
+			case OP_ADDR:
+				pushp(IP->arg.p);
+				printf("ADDR\t%p",IP->arg.p);
+				IP=IP->next;
+				break;
+
+			case OP_FPADDR_F:
+				pTop=&FP[IP->arg.i].f;
+				pushp(pTop);
+				printf("FPADDR.f\t%d\t// %p",IP->arg.i,pTop);
+				IP=IP->next;
+				break;
+
+			case OP_LOAD_F:
+				pTop=popp();
+				pushf(*(double*)pTop);
+				printf("LOAD.f\t// *(double*)%p -> %g",pTop,*(double*)pTop);
+				IP=IP->next;
+				break;
+
+			case OP_STORE_F:
+				fTop=popf();
+				v=popv();
+				*(double*)v.p=fTop;
+				pushf(fTop);
+				printf("STORE.f\t// *(double*)%p=%g",v.p,fTop);
 				IP=IP->next;
 				break;
 
@@ -186,6 +304,38 @@ void run(Instr *IP){
 				IP=IP->next;
 				break;
 
+			case OP_SUB_F:
+				fTop=popf();
+				fBefore=popf();
+				pushf(fBefore-fTop);
+				printf("SUB.f\t// %g-%g -> %g",fBefore,fTop,fBefore-fTop);
+				IP=IP->next;
+				break;
+
+			case OP_MUL_F:
+				fTop=popf();
+				fBefore=popf();
+				pushf(fBefore*fTop);
+				printf("MUL.f\t// %g*%g -> %g",fBefore,fTop,fBefore*fTop);
+				IP=IP->next;
+				break;
+
+			case OP_DIV_I:
+				iTop=popi();
+				iBefore=popi();
+				pushi(iBefore/iTop);
+				printf("DIV.i\t// %d/%d -> %d",iBefore,iTop,iBefore/iTop);
+				IP=IP->next;
+				break;
+
+			case OP_DIV_F:
+				fTop=popf();
+				fBefore=popf();
+				pushf(fBefore/fTop);
+				printf("DIV.f\t// %g/%g -> %g",fBefore,fTop,fBefore/fTop);
+				IP=IP->next;
+				break;
+
 			case OP_LESS_F:
 				fTop=popf();
 				fBefore=popf();
@@ -193,8 +343,8 @@ void run(Instr *IP){
 				printf("LESS.f\t// %g<%g -> %d",fBefore,fTop,fBefore<fTop);
 				IP=IP->next;
 				break;
-
-			default:err("run: instructiune neimplementata: %d",IP->op);
+				
+			default:err("run: not implemented instruction: %d",IP->op);
 			}
 		putchar('\n');
 		}
@@ -210,7 +360,6 @@ void f(int n){		// stack frame: n[-2] ret[-1] oldFP[0] i[1]
 		}
 	}
 */
-
 Instr *genTestProgram(){
 	Instr *code=NULL;
 	addInstrWithInt(&code,OP_PUSH_I,2);
@@ -241,60 +390,3 @@ Instr *genTestProgram(){
 	jfAfter->arg.instr=addInstrWithInt(&code,OP_RET_VOID,1);
 	return code;
 	}
-
-/*TEMA DE LABORATOR:
-f(2.0);
-
-void f(double n){
-    double i = 0.0;
-    while(i < n){
-        put_d(i);
-        i = i + 0.5;
-    }
-}*/
-
-Instr *genTestProgramDouble(){
-	Instr *code = NULL;
-
-	//f(2.0)
-	addInstrWithDouble(&code, OP_PUSH_F, 2.0);
-	Instr *callPos = addInstr(&code, OP_CALL);
-	addInstr(&code, OP_HALT);
-
-	//void f(double n) - avem o var locala 
-	callPos->arg.instr = addInstrWithInt(&code, OP_ENTER, 1);
-	//OP_ENTER nu primește valoarea lui i sau a lui n. El primește nr de 
-	//var locale pe care trebuie să le rezerve în stack frame.
-
-	//double i = 0.0
-	addInstrWithDouble(&code, OP_PUSH_F, 0.0);
-	addInstrWithInt(&code, OP_FPSTORE, 1);
-	//OP_FPSTORE nu primește valoarea pe care o salvează, ci primește 
-	//indexul poziției din stack frame unde salvează valoarea. => FP[1]
-
-	//while(i < n)
-	Instr *whilePos = addInstrWithInt(&code, OP_FPLOAD, 1);
-	addInstrWithInt(&code, OP_FPLOAD, -2);
-	addInstr(&code, OP_LESS_F);
-	Instr *jfAfter = addInstr(&code, OP_JF);
-
-	//put_d(i)
-	addInstrWithInt(&code, OP_FPLOAD, 1);
-	Symbol *s = findSymbol("put_d");
-	if(!s) err("undefined: put_d");
-	addInstr(&code, OP_CALL_EXT)->arg.extFnPtr = s->fn.extFnPtr;
-
-	//i = i + 0.5
-	addInstrWithInt(&code, OP_FPLOAD, 1);
-	addInstrWithDouble(&code, OP_PUSH_F, 0.5);
-	addInstr(&code, OP_ADD_F);
-	addInstrWithInt(&code, OP_FPSTORE, 1);
-
-	//back to while
-	addInstr(&code, OP_JMP)->arg.instr = whilePos;
-
-	//end of function f
-	jfAfter->arg.instr = addInstrWithInt(&code, OP_RET_VOID, 1);
-
-	return code;
-}
