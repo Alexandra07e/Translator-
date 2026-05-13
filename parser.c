@@ -151,7 +151,7 @@ bool varDef(){
                 }
 
                 if(iTk == start){
-                    printf("BUG: varDef returns true without consuming\n");
+                    printf("varDef returns true without consuming\n");
                     exit(1);
                 }
 
@@ -434,7 +434,7 @@ bool exprUnary(Ret *r){
             r->ct = true;
             return true;
         }
-        tkerr("missing expression after '-'");
+        tkerr("missing expression after - or !");
     }
     iTk = start;
     if (consume(NOT)){
@@ -444,7 +444,7 @@ bool exprUnary(Ret *r){
             *r = (Ret){{TB_INT, NULL, -1}, false, true};
             return true;
         }
-        tkerr("missing expression after '!'");
+        tkerr("missing expression after - or !");
     }
     iTk = start;
     if (exprPostfix(r)){
@@ -512,7 +512,7 @@ bool exprMulPrim(Ret *r){
         if (exprCast(&right)){
             Type tDst;
             if(!arithTypeTo(&r->type, &right.type, &tDst))
-                tkerr("invalid operand type for *");
+                tkerr("invalid operand type for * or /");
             
             *r = (Ret){tDst, false, true};
             return exprMulPrim(r);
@@ -554,7 +554,7 @@ bool exprAddPrim(Ret *r){
         if (exprMul(&right)){
             Type tDst;
             if(!arithTypeTo(&r->type, &right.type, &tDst))
-                tkerr("invalid operand type for +");
+                tkerr("invalid operand type for + or -");
             *r = (Ret){tDst, false, true};
 
             return exprAddPrim(r);
@@ -565,7 +565,7 @@ bool exprAddPrim(Ret *r){
         if (exprMul(&right)){
             Type tDst;
             if(!arithTypeTo(&r->type, &right.type, &tDst))
-                tkerr("invalid operand type for -");
+                tkerr("invalid operand type for + or -");
 
             *r = (Ret){tDst, false, true};
             return exprAddPrim(r);
@@ -595,7 +595,7 @@ bool exprRelPrim(Ret *r){
         if (exprAdd(&right)){
             Type tDst;
             if(!arithTypeTo(&r->type, &right.type, &tDst))
-                tkerr("invalid operand type for <");
+                tkerr("invalid operand type for <, <=, >, >=");
             *r = (Ret){{TB_INT, NULL, -1}, false, true};
             return exprRelPrim(r);
         }
@@ -606,7 +606,7 @@ bool exprRelPrim(Ret *r){
         if (exprAdd(&right)){
             Type tDst;
             if(!arithTypeTo(&r->type, &right.type, &tDst))
-                tkerr("invalid operand type for <=");
+                tkerr("invalid operand type for <, <=, >, >=");
             *r = (Ret){{TB_INT, NULL, -1}, false, true};
             return exprRelPrim(r);
         }
@@ -617,7 +617,7 @@ bool exprRelPrim(Ret *r){
         if (exprAdd(&right)){
             Type tDst;
             if(!arithTypeTo(&r->type, &right.type, &tDst))
-                tkerr("invalid operand type for >");
+                tkerr("invalid operand type for <, <=, >, >=");
             *r = (Ret){{TB_INT, NULL, -1}, false, true};
             return exprRelPrim(r);
         }
@@ -628,7 +628,7 @@ bool exprRelPrim(Ret *r){
         if (exprAdd(&right)){
             Type tDst;
             if(!arithTypeTo(&r->type, &right.type, &tDst))
-                tkerr("invalid operand type for >=");
+                tkerr("invalid operand type for <, <=, >, >=");
             *r = (Ret){{TB_INT, NULL, -1}, false, true};
             return exprRelPrim(r);
         }
@@ -658,7 +658,7 @@ bool exprEqPrim(Ret *r) {
         if (exprRel(&right)) {
             Type tDst;
             if(!arithTypeTo(&r->type, &right.type, &tDst))
-                tkerr("invalid operand type for ==");
+                tkerr("invalid operand type for == or !=");
             *r = (Ret){{TB_INT, NULL, -1}, false, true};
             return exprEqPrim(r);
         }
@@ -669,7 +669,7 @@ bool exprEqPrim(Ret *r) {
         if (exprRel(&right)) {
             Type tDst;
             if(!arithTypeTo(&r->type, &right.type, &tDst))
-                tkerr("invalid operand type for !=");
+                tkerr("invalid operand type for == or !=");
             *r = (Ret){{TB_INT, NULL, -1}, false, true};
             return exprEqPrim(r);
         }
@@ -990,10 +990,12 @@ bool fnDef(){
 
 void parse(Token *tokens){
 	iTk=tokens;
-    pushDomain();
+    //pushDomain();
+
+    //vmInit();
 
 	if(!unit())tkerr("syntax error");
 
-    showDomain(symTable, "global");
-    dropDomain();
+    //showDomain(symTable, "global");
+    //dropDomain();
 }

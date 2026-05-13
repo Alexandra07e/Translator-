@@ -53,6 +53,23 @@ int popi(){
 	return SP--->i;
 	}
 
+//FUNCTII PT DOUBLE 
+void pushf(double f){
+	if(SP+1 == stack+10000) err("trying to push into a full stack");
+	(++SP)->f = f;
+}
+
+double popf(){
+	if(SP == stack-1) err("trying to pop from empty stack");
+	return SP--->f;
+}
+
+void put_d(){
+	printf("=> %g", popf());
+}
+
+//----------------------------------
+
 void pushp(void *p){
 	if(SP+1==stack+10000)err("trying to push into a full stack");
 	(++SP)->p=p;
@@ -67,14 +84,20 @@ void put_i(){
 	printf("=> %d",popi());
 	}
 
+//added put_d
 void vmInit(){
 	Symbol *fn=addExtFn("put_i",put_i,(Type){TB_VOID,NULL,-1});
 	addFnParam(fn,"i",(Type){TB_INT,NULL,-1});
+
+	fn = addExtFn("put_d", put_d, (Type){TB_VOID, NULL, -1});
+	addFnParam(fn, "d", (Type){TB_DOUBLE, NULL, -1});
 	}
 
+//added variables
 void run(Instr *IP){
 	Val v;
 	int iArg,iTop,iBefore;
+	double fTop, fBefore;
 	void(*extFnPtr)();
 	for(;;){
 		// shows the index of the current instruction and the number of values from stack
@@ -148,6 +171,29 @@ void run(Instr *IP){
 				printf("LESS.i\t// %d<%d -> %d",iBefore,iTop,iBefore<iTop);
 				IP=IP->next;
 				break;
+
+			case OP_PUSH_F:
+				printf("PUSH.f\t%g",IP->arg.f);
+				pushf(IP->arg.f);
+				IP=IP->next;
+				break;
+
+			case OP_ADD_F:
+				fTop=popf();
+				fBefore=popf();
+				pushf(fBefore+fTop);
+				printf("ADD.f\t// %g+%g -> %g",fBefore,fTop,fBefore+fTop);
+				IP=IP->next;
+				break;
+
+			case OP_LESS_F:
+				fTop=popf();
+				fBefore=popf();
+				pushi(fBefore<fTop);
+				printf("LESS.f\t// %g<%g -> %d",fBefore,fTop,fBefore<fTop);
+				IP=IP->next;
+				break;
+
 			default:err("run: instructiune neimplementata: %d",IP->op);
 			}
 		putchar('\n');
@@ -164,6 +210,7 @@ void f(int n){		// stack frame: n[-2] ret[-1] oldFP[0] i[1]
 		}
 	}
 */
+
 Instr *genTestProgram(){
 	Instr *code=NULL;
 	addInstrWithInt(&code,OP_PUSH_I,2);
@@ -194,3 +241,60 @@ Instr *genTestProgram(){
 	jfAfter->arg.instr=addInstrWithInt(&code,OP_RET_VOID,1);
 	return code;
 	}
+
+/*TEMA DE LABORATOR:
+f(2.0);
+
+void f(double n){
+    double i = 0.0;
+    while(i < n){
+        put_d(i);
+        i = i + 0.5;
+    }
+}*/
+
+Instr *genTestProgramDouble(){
+	Instr *code = NULL;
+
+	//f(2.0)
+	addInstrWithDouble(&code, OP_PUSH_F, 2.0);
+	Instr *callPos = addInstr(&code, OP_CALL);
+	addInstr(&code, OP_HALT);
+
+	//void f(double n) - avem o var locala 
+	callPos->arg.instr = addInstrWithInt(&code, OP_ENTER, 1);
+	//OP_ENTER nu primește valoarea lui i sau a lui n. El primește nr de 
+	//var locale pe care trebuie să le rezerve în stack frame.
+
+	//double i = 0.0
+	addInstrWithDouble(&code, OP_PUSH_F, 0.0);
+	addInstrWithInt(&code, OP_FPSTORE, 1);
+	//OP_FPSTORE nu primește valoarea pe care o salvează, ci primește 
+	//indexul poziției din stack frame unde salvează valoarea. => FP[1]
+
+	//while(i < n)
+	Instr *whilePos = addInstrWithInt(&code, OP_FPLOAD, 1);
+	addInstrWithInt(&code, OP_FPLOAD, -2);
+	addInstr(&code, OP_LESS_F);
+	Instr *jfAfter = addInstr(&code, OP_JF);
+
+	//put_d(i)
+	addInstrWithInt(&code, OP_FPLOAD, 1);
+	Symbol *s = findSymbol("put_d");
+	if(!s) err("undefined: put_d");
+	addInstr(&code, OP_CALL_EXT)->arg.extFnPtr = s->fn.extFnPtr;
+
+	//i = i + 0.5
+	addInstrWithInt(&code, OP_FPLOAD, 1);
+	addInstrWithDouble(&code, OP_PUSH_F, 0.5);
+	addInstr(&code, OP_ADD_F);
+	addInstrWithInt(&code, OP_FPSTORE, 1);
+
+	//back to while
+	addInstr(&code, OP_JMP)->arg.instr = whilePos;
+
+	//end of function f
+	jfAfter->arg.instr = addInstrWithInt(&code, OP_RET_VOID, 1);
+
+	return code;
+}
